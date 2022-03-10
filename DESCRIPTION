@@ -1,0 +1,34 @@
+Package: poppy
+Type: Package
+Title: Somatic Genome analysis
+Version: 0.2.0
+Author: David Quigley <david.quigley@ucsf.edu>
+Maintainer: David Quigley <david.quigley@ucsf.edu>
+Depends: R (>= 3.50)
+Description: Somatic genome analysis
+    Use four spaces when indenting paragraphs within the Description.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    RColorBrewer,
+    VariantAnnotation,
+    SummarizedExperiment,
+    CLONETv2,
+    TPES,
+    deconstructSigs,
+    BSgenome.Hsapiens.UCSC.hg38,
+    BiocGenerics,
+    GenomeInfoDb,
+    graphics,
+    plyr,
+    GenomicRanges,
+    stringr,
+    S4Vectors,
+    circlize,
+    grDevices,
+    Biostrings,
+    utils,
+    IRanges,
+    BSgenome
+RoxygenNote: 7.1.1
