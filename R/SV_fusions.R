@@ -1,6 +1,7 @@
-#' Wrapper function to add structural variants and fusions annotations from Gridss and Linx, respectivelly.
+#' Wrapper function to add structural variants and fusions annotations from Gridss and Linx, respectively.
 #' @param somatic somatic data object to modify
-#' @param fn_linx path to fusion annotations linx text file (e.g. SAMPLE_ID.linx.fusion.tsv)
+#' @param fn_fusions path to fusion annotations linx text file (e.g. SAMPLE_ID.linx.fusion.tsv)
+#' @param fn_links path to links annotations linx text file (e.g. SAMPLE_ID.linx.links.tsv)
 #' @param fn_gripss path to structural variants filtered gridss vcf file (e.g. SAMPLE_ID_GRIPSS.somatic.filtered.vcf)
 #' @export
 #' library( VariantAnnotation )
@@ -18,7 +19,7 @@ add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2)
     file_check("add_SV_gridss", fn_gripss)
     vcf = readVcf(fn_gripss, "hg38")
     if ( length(rowRanges(vcf)) != 0){
-        vcf_f = vcf[VariantAnnotation::fixed(vcf)$FILTER == "PASS" || VariantAnnotation::fixed(vcf)$FILTER == "PON"]
+        vcf_f = vcf[VariantAnnotation::fixed(vcf)$FILTER == "PASS" | VariantAnnotation::fixed(vcf)$FILTER == "PON"]
         reads = parse_gridss_vcf(vcf_f)
         keep = reads$rp_n_alt == 0 & reads$vf_n_alt == 0 & reads$refpair_t + 
             reads$vf_t_alt >= MIN_READS
@@ -187,16 +188,34 @@ calculate_gridss_summary<- function (somatic, nt_for_microhomology = 15)
 ### new function add_fusions_linx
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-somatic_add_fusion_linx <- function( somatic, fn_linx ){
-    file_check("somatic_add_fusion_linx", fn_linx)
-    fusions_linx <- read.table(fn_linx, header=TRUE, sep = "\t",
+somatic_add_fusion_linx <- function( somatic, fn_fusions ){
+    file_check("somatic_add_fusion_linx", fn_fusions)
+    fusions_linx <- read.table(fn_fusions, header=TRUE, sep = "\t",
                                stringsAsFactors=FALSE)
     if (dim(fusions_linx)[1]==0){
-        print(paste("None fusions detected or passed the filters by LINX on", somatic$sample_id, "sample"))
+        print(paste("Not detected fusions nor passed the filters by LINX on", somatic$sample_id, "sample"))
     }
     else{
         print(paste(dim(fusions_linx)[1]," fusions detected by LINX on", somatic$sample_id, "sample"))
     }
     somatic <- c( somatic, list( fusions_linx = fusions_linx ) )
+    somatic
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### new function add_links_linx
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+somatic_add_links_linx <- function( somatic, fn_links ){
+    file_check("somatic_add_links_linx", fn_links)
+    links_linx <- read.table(fn_links, header=TRUE, sep = "\t",
+                             stringsAsFactors=FALSE)
+    if (dim(links_linx)[1]==0){
+        print(paste("Not detected links nor passed the filters by LINX on", somatic$sample_id, "sample"))
+    }
+    else{
+        print(paste(dim(links_linx)[1]," links detected by LINX on", somatic$sample_id, "sample, and from those", sum(links_linx$ecDna =="true"), "are ecDNA" ))
+    }
+    somatic <- c( somatic, list( links_linx = links_linx ) )
     somatic
 }
