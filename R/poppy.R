@@ -1,11 +1,11 @@
-#library(RColorBrewer)
-#library(VariantAnnotation)
-#library(CLONETv2)
-#library(TPES)
-#library(deconstructSigs)
-#library(BSgenome.Hsapiens.UCSC.hg38)
-#library(plyr)
-
+# library(RColorBrewer)
+# library(VariantAnnotation)
+# library(deconstructSigs)
+# library(BSgenome.Hsapiens.UCSC.hg38)
+# library(plyr)
+# library( GenomicRanges )
+# library( GenomicFeatures )
+#
 #' Find copy number of two sets of CNA segments, e.g. pre vs post
 #'
 #' @description
@@ -91,7 +91,16 @@ Genome = function( fn_gene_locs, fn_cyto, fn_chrom_lengths, fn_centromeres, fn_e
     }
     gene_locs = gene_locs[ ! (gene_locs$symbol %in% symbols[ which(n_chr>1) ] & gene_locs$chrom=="chrY"),]
 
-    gene_locs = plyr::ddply(gene_locs, "symbol", plyr::summarize, start = min(GenomicRanges::start), end = max(GenomicRanges::end) )
+    #gene_locs = plyr::ddply(gene_locs, "symbol", plyr::summarize, start = min(GenomicRanges::start), end = max(GenomicRanges::end) )
+    gl_symbols = sort( unique(gene_locs$symbol) )
+    gl_start = rep(0, length( gl_symbols ) )
+    gl_end = rep(0, length( gl_symbols ) )
+    for(i in 1:length(gl_symbols)){
+        idx = which( gene_locs$symbol==gl_symbols[i] )
+        gl_start[i] = min( gene_locs$start[ idx ] )
+        gl_end[i] = max( gene_locs$end[ idx ] )
+    }
+    gene_locs = data.frame( symbol=gl_symbols, start=gl_start, end=gl_end, stringsAsFactors = FALSE)
     gene_locs$strand = gene_locs_full$strand[ match.idx( gene_locs_full$symbol, gene_locs$symbol  )$idx.A ]
     gene_locs$chrom = gene_locs_full$chrom[ match.idx( gene_locs_full$symbol, gene_locs$symbol  )$idx.A ]
     chrom_idx = get.split.col( gene_locs$chrom, "chr", last=TRUE)
@@ -859,6 +868,22 @@ calculate_SNV_signatures = function(somatic, tri.counts.method = "genome", min_d
 }
 
 
+#' Wrapper function to add annotated germline calls from HaplotypeCaller (GATK4)
+#'
+#' Writes out mutsig to somatic object
+#'
+#' @param somatic incoming somatic object to modify
+#' @param fn_germline germline variant file to read
+#' @export
+read_germline_pathogenic = function( somatic, fn_germline ){
+    file_check( "read_germline_pathogenic", fn_germline )
+    gm = read.table( fn_germline, sep='\t', header=TRUE, stringsAsFactors=FALSE)
+    names(gm) = c("chrom", "pos", "ref", "alt", "symbol", "ensembl_transcript", "effect", "aa", "clinvar", "ad_ref", "ad_alt")
+    gm = gm[str_detect(gm$clinvar, "Pathogenic"),]
+    somatic = c(somatic, list( "germline_pathogenic" = gm ) )
+    somatic
+}
+
 
 # ------------------------------------------------------------------------------------------------------
 # gene by gene analysis
@@ -1396,3 +1421,5 @@ plot_circlize = function( SO,
     }
     list( sv=sv, cna=cna )
 }
+
+

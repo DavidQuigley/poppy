@@ -214,193 +214,9 @@ calculate_CNA_matrix = function(SO, genome, bin_size=3000000 ){
     matrix_CNA
 }
 
-#' Use CLONET to calculate ploidy
-#' @param beta_table calculated by CLONET
-#' @param n_cores threads, default 1
-#' @param library_type WGS or WES
-#' @param max_homo_dels_fraction maximum allowed fraction of segment with homozygous deletion, default 0.01
-#' @param min_required_snps minimum required SNPs within a segment, default 5
-#' @return the ploidy table calculated by CLONET
-compute_ploidy_with_retries = function( beta_table,
-                                        n_cores=1,
-                                        library_type,
-                                        max_homo_dels_fraction=0.01,
-                                        min_required_snps = 5){
-    if( utils::packageVersion("CLONETv2") == '2.2.0' ){
-        pl_table =
-            tryCatch( CLONETv2::compute_ploidy(beta_table,
-                                     n_cores = n_cores,
-                                     library_type=library_type,
-                                     max_homo_dels_fraction=max_homo_dels_fraction),
-                      error=function(cond){ return( NA ) },
-                      warning=function(cond){ return( NA ) }
-            )
-    }else{
-        pl_table = CLONETv2::compute_ploidy(beta_table, n_cores = n_cores)
-    }
-    if( is.na( pl_table[1] ) ){
-        # compute_ploidy can fail to converge and throw an error in 2.2.0
-        pl_table = CLONETv2::compute_ploidy(beta_table, n_cores = n_cores)
-        #        pl_table = compute_ploidy(beta_table, n_cores = n_cores, library_type = library_type,
-        #                                  max_homo_dels_fraction = max_homo_dels_fraction,
-        #                                    beta_limit_for_neutral_reads = 0.9, min_coverage = 20,
-        #                                    min_required_snps = min_required_snps,
-        #                                    n_digits = 3 )
-    }
-    pl_table
-}
-
-#' correct raw segment CNA values using calculated purity & ploidy
-#'
-#' CLONET's estimate can fail, so this code has some built-in attempts to retry
-#' the calculation with parameters chosen to increase the chances of a successful
-#' convergence. This is not an ideal solution.
-#'
-#' If purity and ploidy cannot be estimated but you still want to correct the segment
-#' copy number estimates, pass in purity_override and/or ploidy_override parameters
-#'
-#' @param genome object created by call to Genome()
-#' @param somatic somatic data object to modify
-#' @param pileup_normal pileup file created by ASEQ program
-#' @param pileup_tumor pileup file created by ASEQ program
-#' @param segment_source source, default copycat
-#' @param sex sample sex, M or F
-#' @param experiment_type one of WGS, WES
-#' @param min_required_SNPs minimum number of SNPs in a segment to make a call
-#' @param n_cores allow for multithreaded calculations
-#' @param purity_override use this value instead of estimating purity
-#' @param ploidy_override use this value instead of estimating ploidy
-#' @export
-calculate_CNA_segments_clonality_CLONET = function( genome, somatic,
-                                                    pileup_normal,
-                                                    pileup_tumor, sex="M",
-                                                    segment_source="copycat",
-                                                    experiment_type="WGS",
-                                                    min_required_SNPs=10,
-                                                    n_cores = 1,
-                                                    purity_override = purity_override,
-                                                    ploidy_override = ploidy_override){
-
-    segmentation = somatic$segments
-    segmentation <- cbind( somatic$sample_id, segmentation )
-    names(segmentation)[1] = "sample_id"
-    segmentation$sample_id <- as.character(segmentation$sample_id)
-
-    if( segment_source=="copycat" ){
-        segmentation = segmentation[c("sample_id", "chrom", "start", "end", "segments", "copies")]
-        dimnames(segmentation)[[2]] <- c("sample_id","chr","start","end","call","logR")
-        # convert estimate from chromosome count to log2
-        # CopyCat doesn't know X/Y are haploid on males, so single copy X called as 2 copies by CopyCat
-        if( sex=="M"){
-            is_dip = segmentation$chr != "chrX" & segmentation$chr != "chrY"
-            # copies is not used for calculation, but adjusting to keep consistent.
-            somatic$segments$copies[ !is_dip ] = somatic$segments$copies[ !is_dip] / 2
-        }else{
-            is_dip = rep(TRUE, dim(segmentation)[1])
-        }
-        segmentation$logR <- log2(segmentation$logR / 2)
-    }else{
-        if( sex=="M"){
-            is_dip = segmentation$chr != "chrX" & segmentation$chr != "chrY"
-        }else{
-            is_dip = rep(TRUE, dim(segmentation)[1])
-        }
-        names(segmentation)[ which(names(segmentation)=="chrom") ] = "chr"
-        names(segmentation)[ which(names(segmentation)=="log2") ] = "logR"
-        segmentation = segmentation[,c("sample_id", "chr", "start", "end", "depth", "logR")]
-    }
-    beta_table <- CLONETv2::compute_beta_table(seg_tb = segmentation,
-                                     pileup_tumor = pileup_tumor,
-                                     pileup_normal = pileup_normal,
-                                     min_required_snps=min_required_SNPs,
-                                     n_cores = n_cores)
-
-    # Compute ploidy and purity
-    #
-    pl_table = compute_ploidy_with_retries( beta_table, n_cores=n_cores, library_type=experiment_type,
-                                            min_required_snps=min_required_SNPs, max_homo_dels_fraction = 0.01)
-    if( utils::packageVersion("CLONETv2") == '2.2.0' ){
-        adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                       ploidy_table = pl_table,
-                                       library_type = experiment_type,
-                                       min_required_snps=min_required_SNPs,
-                                       n_cores = n_cores)
-    }else{
-        adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                           ploidy_table = pl_table,
-                                           min_required_snps=min_required_SNPs,
-                                           n_cores = n_cores)
-    }
-    if( !is.na(purity_override ) ){
-        purity = purity_override
-        adm_table[1,"adm"] = 1-purity
-    }
-    purity = 1-adm_table[1,"adm"]
-    #cpt = check_ploidy_and_admixture(beta_table, pl_table, adm_table)
-    #ggsave("/data1/projects/WCDT_WGS_paired/results_v2/DTB-137-PRO/purity/cpa_plot_max_01.pdf")
-    if( is.na(purity) ){
-        pl_table = compute_ploidy_with_retries( beta_table, n_cores=n_cores, library_type=experiment_type,
-                                                min_required_snps = min_required_SNPs, max_homo_dels_fraction = 0.15)
-        if( utils::packageVersion("CLONETv2") == '2.2.0' ){
-            adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                               ploidy_table = pl_table,
-                                               library_type = experiment_type,
-                                               min_required_snps=min_required_SNPs,
-                                               n_cores = n_cores)
-        }else{
-            adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                               ploidy_table = pl_table,
-                                               min_required_snps=min_required_SNPs,
-                                               n_cores = n_cores)
-        }
-        purity = 1-adm_table[1,"adm"]
-    }
-    if( is.na(purity) ){
-        pl_table = compute_ploidy_with_retries( beta_table, n_cores=n_cores, library_type=experiment_type,
-                                                min_required_snps = min_required_SNPs, max_homo_dels_fraction = 0.2)
-        if( utils::packageVersion("CLONETv2") == '2.2.0' ){
-            adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                               ploidy_table = pl_table,
-                                               library_type = experiment_type,
-                                               min_required_snps=min_required_SNPs,
-                                               n_cores = n_cores)
-        }else{
-            adm_table <- CLONETv2::compute_dna_admixture(beta_table = beta_table,
-                                               ploidy_table = pl_table,
-                                               min_required_snps=min_required_SNPs,
-                                               n_cores = n_cores)
-        }
-        purity = 1-adm_table[1,"adm"]
-    }
-    ploidy = pl_table[1,2]
-    if( !is.na( ploidy_override )){
-        pl_table[1, 2] = ploidy_override
-
-    }
-    ast = CLONETv2::compute_allele_specific_scna_table(beta_table,
-                                             pl_table,
-                                             adm_table,
-                                             error_tb = CLONETv2::error_table,
-                                             n_cores = n_cores)
-    somatic$segments$copies_int_corr = ast$cnA.int + ast$cnB.int
-    somatic$segments$logR_corr = round( ast$log2.corr, 2)
-    somatic$segments$copies_major_corr = round( ast$cnA, 2)
-    somatic$segments$copies_minor_corr = round( ast$cnB, 2)
-    somatic$segments$copies_corr[is_dip] = round( 2* 2^( ast$log2.corr[is_dip] ), 2)
-    somatic$segments$copies_corr[!is_dip] = round( 2^( ast$log2.corr[!is_dip] ), 2)
-    corr_failed = is.na( somatic$segments$logR_corr )
-    somatic$segments$copies_corr[corr_failed] = somatic$segments$copies[corr_failed]
-
-    somatic = c(somatic, list( "purity" = purity ) )
-    somatic = c(somatic, list( "ploidy" = ploidy ) )
-    somatic = c(somatic, list( "beta_table" = beta_table) )
-    somatic = c(somatic, list( "pl_table" = pl_table) )
-    somatic = c(somatic, list( "adm_table" = adm_table) )
-    somatic
-}
 
 
-#' Wrapper function to add CNA segments, filter, and adjust for ploidy/purity using CLONET
+#' Wrapper function to add CNA segments, filter, and optionally adjust for ploidy/purity using CLONET
 #' @param genome object created by call to Genome()
 #' @param somatic somatic data object to modify
 #' @param fn_segs path to segment file
@@ -432,7 +248,6 @@ somatic_add_CNA_cnvkit = function( genome, somatic, fn_segs, fn_bins, fn_pileup_
     file_check( "somatic_add_CNA", fn_pileup_tumor )
     file_check( "somatic_add_CNA", fn_segs )
     file_check( "somatic_add_CNA", fn_bins )
-
     CNA_method = "cnvkit"
     sample_base = somatic$sample_base
     sample_id_tumor = somatic$sample_id
@@ -443,15 +258,6 @@ somatic_add_CNA_cnvkit = function( genome, somatic, fn_segs, fn_bins, fn_pileup_
     somatic = c( somatic, list( "rdbins" = read_CNA_rdbins_cnvkit( fn_bins ) ) )
 
     somatic = adjust_CNA_segments_filter(genome, somatic, min_segment_percent = min_segment_percent )
-    somatic = calculate_CNA_segments_clonality_CLONET( genome, somatic,
-                                                       pileup_normal, pileup_tumor, sex=sex,
-                                                       segment_source=CNA_method,
-                                                       experiment_type=experiment_type,
-                                                       n_cores = n_cores,
-                                                       min_required_SNPs = min_required_SNPs,
-                                                       purity_override = purity_override,
-                                                       ploidy_override = ploidy_override)
-
     somatic
 }
 
@@ -493,14 +299,6 @@ somatic_add_CNA_copycat = function( genome, somatic, fn_segs, fn_bins, fn_pileup
     somatic = c( somatic, list( "segments_raw" = read_CNA_segments_copycat( fn_segs ) ) )
     somatic = c( somatic, list( "rdbins" = read_CNA_rdbins_copycat( fn_bins ) ) )
     somatic = adjust_CNA_segments_filter(genome, somatic, min_segment_percent = min_segment_percent )
-    somatic = calculate_CNA_segments_clonality_CLONET( genome, somatic,
-                                                       pileup_normal, pileup_tumor, sex=sex,
-                                                       segment_source = CNA_method,
-                                                       experiment_type = "WGS",
-                                                       n_cores = n_cores,
-                                                       min_required_SNPs = min_required_SNPs,
-                                                       purity_override = purity_override,
-                                                       ploidy_override = ploidy_override)
     somatic
 }
 
@@ -519,6 +317,32 @@ somatic_add_CNA_by_gene_purple = function( somatic, fn_cna){
     somatic
 }
 
+#' calculate gene level copy number calls using segments defined by PURPLE and gene locations
+#' @param somatic somatic data object to modify
+#' @param genome genome object created by Genome(), contains gene locations
+#' @export
+somatic_add_CNA_by_gene_from_segments = function( somatic, genome ){
+
+    CN_weighted_mean = rep(NA, N )
+    CN_largest_segment = rep(NA, N )
+    gr_segments <- GenomicRanges::makeGRangesFromDataFrame(somatic$segments[,c("chrom","start","end","copyNumber")],
+                                                           keep.extra.columns = T)
+    # identify segments that intersect the start and end of each gene
+    # trim intersecting segments to gene bounds
+    # calculate 1) weighted average segment CN and 2) CN of largest segment
+    for(i in 1:N ){
+        gr_gene = GenomicRanges::GRanges(seqnames=genome$gene_locs$chrom[i],
+                                         ranges = IRanges(start=genome$gene_locs$start[i],
+                                                          end=genome$gene_locs$end[i]))
+        df_segments_overlapping_gene = data.frame( subsetByOverlaps( gr_segments, gr_gene) )
+        df_segments_overlapping_gene$start[ df_segments_overlapping_gene$start < genome$gene_locs$start[i] ] = genome$gene_locs$start[i]
+        df_segments_overlapping_gene$end[ df_segments_overlapping_gene$end > genome$gene_locs$end[i] ] = genome$gene_locs$end[i]
+        CN_weighted_mean[i] = weighted.mean( df_segments_overlapping_gene$copyNumber, df_segments_overlapping_gene$width)
+        CN_largest_segment[i] = df_segments_overlapping_gene$copyNumber[ which( df_segments_overlapping_gene$width == max(df_segments_overlapping_gene$width)[1] ) ]
+    }
+    somatic <- c( somatic, list( CN_weighted_mean = CN_weighted_mean, CN_largest_segment = CN_largest_segment ) )
+    somatic
+}
 
 #' Wrapper function to add CNA segments from PURPLE
 #' @param somatic somatic data object to modify
