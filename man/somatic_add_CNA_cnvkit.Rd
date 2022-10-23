@@ -2,7 +2,7 @@
 % Please edit documentation in R/CNA.R
 \name{somatic_add_CNA_cnvkit}
 \alias{somatic_add_CNA_cnvkit}
-\title{Wrapper function to add CNA segments, filter, and adjust for ploidy/purity using CLONET}
+\title{Wrapper function to add CNA segments, filter, and optionally adjust for ploidy/purity using CLONET}
 \usage{
 somatic_add_CNA_cnvkit(
   genome,
@@ -54,5 +54,5 @@ somatic_add_CNA_cnvkit(
 \item{verbose}{report progress to stdout, default FALSE}
 }
 \description{
-Wrapper function to add CNA segments, filter, and adjust for ploidy/purity using CLONET
+Wrapper function to add CNA segments, filter, and optionally adjust for ploidy/purity using CLONET
 }

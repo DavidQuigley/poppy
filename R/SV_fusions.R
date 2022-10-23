@@ -1,19 +1,9 @@
 #' Wrapper function to add structural variants and fusions annotations from Gridss and Linx, respectively.
 #' @param somatic somatic data object to modify
-#' @param fn_fusions path to fusion annotations linx text file (e.g. SAMPLE_ID.linx.fusion.tsv)
-#' @param fn_links path to links annotations linx text file (e.g. SAMPLE_ID.linx.links.tsv)
 #' @param fn_gripss path to structural variants filtered gridss vcf file (e.g. SAMPLE_ID_GRIPSS.somatic.filtered.vcf)
+#' @param MIN_READS minimum number of reads to consider
 #' @export
-#' library( VariantAnnotation )
-#' library( stringr )
-#' library( plyr )
-#' library( poppy )
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-### new function add_SV_gridss
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2) 
+add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2)
 {
     sample_id_tumor = somatic$sample_id
     file_check("add_SV_gridss", fn_gripss)
@@ -21,10 +11,10 @@ add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2)
     if ( length(rowRanges(vcf)) != 0){
         vcf_f = vcf[VariantAnnotation::fixed(vcf)$FILTER == "PASS" | VariantAnnotation::fixed(vcf)$FILTER == "PON"]
         reads = parse_gridss_vcf(vcf_f)
-        keep = reads$rp_n_alt == 0 & reads$vf_n_alt == 0 & reads$refpair_t + 
+        keep = reads$rp_n_alt == 0 & reads$vf_n_alt == 0 & reads$refpair_t +
             reads$vf_t_alt >= MIN_READS
         vcf_f = vcf_f[keep]
-        
+
         somatic$gn_bnd = length(unique(info(vcf_f)[grepl("BND",info(vcf_f)$EVENTTYPE),]$EVENT))
         somatic$gn_del = length(unique(info(vcf_f)[grepl("DEL",info(vcf_f)$EVENTTYPE),]$EVENT))
         somatic$gn_dup = length(unique(info(vcf_f)[grepl("DUP",info(vcf_f)$EVENTTYPE),]$EVENT))
@@ -50,14 +40,13 @@ add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2)
         somatic$gn_sgl = 0
         somatic
     }
-    
+
 }
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# new function parse_gridss_vcf
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+#' Parse the VCF file from GRIDSS
+#' @param vcf_f vcf object to parse
+#' @export
 parse_gridss_vcf <- function( vcf_f ){
     reads = data.frame(
         rp_n_alt=rep(0, length(vcf_f)),
@@ -78,9 +67,9 @@ parse_gridss_vcf <- function( vcf_f ){
     refpair = geno(vcf_f)$REFPAIR # read pairs "spanning" this breakend supporting the reference allele and necessary to calculated VAF
     TAF = info(vcf_f)$TAF
     hom_len = info(vcf_f)$HOMLEN
-    
-    for(i in 1:length(vcf_f)){    
-        
+
+    for(i in 1:length(vcf_f)){
+
         reads$rp_n_alt[i] = rp[i,1]
         reads$rp_t_alt[i] = rp[i,2]
         reads$pr_ref_n[i] = pr_ref[i,1]
@@ -92,14 +81,14 @@ parse_gridss_vcf <- function( vcf_f ){
         reads$TAF[i] = TAF[i]
         if (is.integer(hom_len[[i]]) && length(hom_len[[i]]) != 0L)
         {
-            reads$hom_len[i] = hom_len[[i]]   
+            reads$hom_len[i] = hom_len[[i]]
         }
         else{
             reads$hom_len[i] = NA
         }
-        
+
     }
-    
+
     reads$vf_n_alt[ is.na(reads$vf_n_alt) ] = 0
     reads$pr_ref_t[ is.na(reads$pr_ref_t) ] = 0
     reads$refpair_n[ is.na(reads$refpair_n) ] = 0
@@ -107,28 +96,25 @@ parse_gridss_vcf <- function( vcf_f ){
     reads
 }
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# new function calculate_gridss_summary
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#' GRIDSS no longer writes the SVLEN header [https://github.com/PapenfussLab/gridss/issues/561]
-#' SVLEN is calculated manually
-
-
-calculate_gridss_summary<- function (somatic, nt_for_microhomology = 15) 
-{
-    
+#' Summarize the results of GRIDSS
+#' @param somatic somatic data object to modify
+#' @export
+#'
+calculate_gridss_summary<- function(somatic){
+    # GRIDSS no longer writes the SVLEN header [https://github.com/PapenfussLab/gridss/issues/561]
+    # SVLEN is calculated manually
     if ( dim(somatic$gridss)[1] != 0){
-        df = data.frame(svtype = as.character(info(somatic$gridss)$EVENTTYPE), 
-                        chrom_1 = as.character(seqnames(somatic$gridss)), start_1 = start(somatic$gridss), 
-                        end_1 = end(somatic$gridss), chrom_2 = as.character(seqnames(somatic$gridss)), 
-                        start_2 = start(somatic$gridss), end_2 = end(somatic$gridss), 
-                        filter = as.character(rowRanges(somatic$gridss)$FILTER), 
+        df = data.frame(svtype = as.character(info(somatic$gridss)$EVENTTYPE),
+                        chrom_1 = as.character(seqnames(somatic$gridss)), start_1 = start(somatic$gridss),
+                        end_1 = end(somatic$gridss), chrom_2 = as.character(seqnames(somatic$gridss)),
+                        start_2 = start(somatic$gridss), end_2 = end(somatic$gridss),
+                        filter = as.character(rowRanges(somatic$gridss)$FILTER),
                         row.names = names(rowRanges(somatic$gridss)), stringsAsFactors = FALSE)
         if (dim(df)[1] > 0) {
             df$sample_id = rep(somatic$sample_id, dim(df)[1])
             df$sv_length = rep(NA, dim(df)[1])
             mate_id = rep(NA, dim(df)[1])
-            
+
             str2 = unlist(alt(somatic$gridss))
             is_left = str_detect(string = str2, pattern = stringr::fixed("["))
             is_right = str_detect(string = str2, pattern = stringr::fixed("]"))
@@ -150,9 +136,9 @@ calculate_gridss_summary<- function (somatic, nt_for_microhomology = 15)
             df$end_2 = df$start_2 + 1
             df$end_1 = df$start_1 + 1
         }
-        
+
         for (i in 1:length(df$sv_length)) {
-            
+
             if (df$svtype[i] != "BND") {
                 df$sv_length[i] = df$end_1[i] - df$start_2[i]
             }
@@ -163,31 +149,23 @@ calculate_gridss_summary<- function (somatic, nt_for_microhomology = 15)
         }
         df$mate_id = mate_id
         df = cbind(df, parse_gridss_vcf(somatic$gridss))
-        ##df$n_microhomology = rep(NA, dim(df)[1])
-        ##for (i in 1:dim(df)[1]) {
-        #  if (df$svtype[i] == "DEL") {
-        #     df$n_microhomology[i] = identify_microhomology(df$chrom_1[i], 
-        #                                                   df$start_1[i], df$end_1[i], nt_for_microhomology)
-        #}
-        #}
         somatic$list_sv_gripss = df
-        somatic$nt_for_microhomology = nt_for_microhomology
         somatic
     }
     else {
-        print (paste("None somatic SV detected or passed the filters by GRIPSS on", somatic$sample_id, "sample" ) )
+        print(paste("No somatic SV detected or passed the filters by GRIPSS on", somatic$sample_id, "sample" ) )
         somatic$list_sv_gripss = ""
-        somatic$nt_for_microhomology = nt_for_microhomology
         somatic
     }
 }
 
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-### new function add_fusions_linx
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+#' add fusions calculated by linx
+#' @param somatic somatic data object to modify
+#' @param fn_fusions file with fusions to add
+#' @export
 somatic_add_fusion_linx <- function( somatic, fn_fusions ){
     file_check("somatic_add_fusion_linx", fn_fusions)
     fusions_linx <- read.table(fn_fusions, header=TRUE, sep = "\t",
@@ -202,10 +180,10 @@ somatic_add_fusion_linx <- function( somatic, fn_fusions ){
     somatic
 }
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-### new function add_links_linx
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+#' Add links identified by linx
+#'
+#' @param somatic somatic data object to modify
+#' @export
 somatic_add_links_linx <- function( somatic, fn_links ){
     file_check("somatic_add_links_linx", fn_links)
     links_linx <- read.table(fn_links, header=TRUE, sep = "\t",

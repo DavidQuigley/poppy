@@ -313,7 +313,7 @@ somatic_add_CNA_by_gene_purple = function( somatic, fn_cna){
     names( CNA_genes )[1] = "chrom"
     dimnames(CNA_genes)[[1]] = CNA_genes$gene
     CNA_genes = CNA_genes[, c("transcriptId", "minCopyNumber","maxCopyNumber", "minMinorAlleleCopyNumber")]
-    somatic = c( somatic, list( "CNA_genes" = CNA_genes ) )
+    somatic = c( somatic, list( "CNA_genes_purple" = CNA_genes ) )
     somatic
 }
 
@@ -323,6 +323,7 @@ somatic_add_CNA_by_gene_purple = function( somatic, fn_cna){
 #' @export
 somatic_add_CNA_by_gene_from_segments = function( somatic, genome ){
 
+    N = dim(genome$gene_locs)[1]
     CN_weighted_mean = rep(NA, N )
     CN_largest_segment = rep(NA, N )
     gr_segments <- GenomicRanges::makeGRangesFromDataFrame(somatic$segments[,c("chrom","start","end","copyNumber")],
@@ -340,7 +341,12 @@ somatic_add_CNA_by_gene_from_segments = function( somatic, genome ){
         CN_weighted_mean[i] = weighted.mean( df_segments_overlapping_gene$copyNumber, df_segments_overlapping_gene$width)
         CN_largest_segment[i] = df_segments_overlapping_gene$copyNumber[ which( df_segments_overlapping_gene$width == max(df_segments_overlapping_gene$width)[1] ) ]
     }
-    somatic <- c( somatic, list( CN_weighted_mean = CN_weighted_mean, CN_largest_segment = CN_largest_segment ) )
+    df_genes=data.frame( weighted_mean=CN_weighted_mean,
+                         largest_segment = CN_largest_segment,
+                         row.names=genome$gene_locs$symbol )
+    df_genes$weighted_mean = round( df_genes$weighted_mean, 3)
+    df_genes$largest_segment = round( df_genes$largest_segment, 3)
+    somatic <- c( somatic, list( CNA_genes = df_genes ) )
     somatic
 }
 
