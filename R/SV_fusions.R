@@ -25,7 +25,6 @@ add_SV_gridss <-function (somatic, fn_gripss, MIN_READS = 2)
         somatic
     }
     else {
-        print (paste("None somatic SV detected or passed the filters by GRIPSS on", somatic$sample_id, "sample" ) )
         if(length(rowRanges(vcf)) == 0){
             somatic$gridss = vcf
         }
@@ -153,7 +152,6 @@ calculate_gridss_summary<- function(somatic){
         somatic
     }
     else {
-        print(paste("No somatic SV detected or passed the filters by GRIPSS on", somatic$sample_id, "sample" ) )
         somatic$list_sv_gripss = ""
         somatic
     }
@@ -170,12 +168,6 @@ somatic_add_fusion_linx <- function( somatic, fn_fusions ){
     file_check("somatic_add_fusion_linx", fn_fusions)
     fusions_linx <- read.table(fn_fusions, header=TRUE, sep = "\t",
                                stringsAsFactors=FALSE)
-    if (dim(fusions_linx)[1]==0){
-        print(paste("Not detected fusions nor passed the filters by LINX on", somatic$sample_id, "sample"))
-    }
-    else{
-        print(paste(dim(fusions_linx)[1]," fusions detected by LINX on", somatic$sample_id, "sample"))
-    }
     somatic <- c( somatic, list( fusions_linx = fusions_linx ) )
     somatic
 }
@@ -188,12 +180,6 @@ somatic_add_links_linx <- function( somatic, fn_links ){
     file_check("somatic_add_links_linx", fn_links)
     links_linx <- read.table(fn_links, header=TRUE, sep = "\t",
                              stringsAsFactors=FALSE)
-    if (dim(links_linx)[1]==0){
-        print(paste("Not detected links nor passed the filters by LINX on", somatic$sample_id, "sample"))
-    }
-    else{
-        print(paste(dim(links_linx)[1]," links detected by LINX on", somatic$sample_id, "sample, and from those", sum(links_linx$ecDna =="true"), "are ecDNA" ))
-    }
     somatic <- c( somatic, list( links_linx = links_linx ) )
     somatic
 }
