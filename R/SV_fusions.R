@@ -139,7 +139,7 @@ calculate_gridss_summary<- function(somatic){
         for (i in 1:length(df$sv_length)) {
 
             if (df$svtype[i] != "BND") {
-                df$sv_length[i] = df$end_1[i] - df$start_2[i]
+                df$sv_length[i] = df$end_1[i] - df$start_2[i] -1
             }
             mid = info(somatic$gridss)$MATEID[[i]]
             if (length(mid) > 0) {
